@@ -1,0 +1,14 @@
+{
+  "name": "savings-tracker",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:all": "cd frontend && npm install && npm run build && cd ../backend && npm install",
+    "start": "node backend/src/index.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

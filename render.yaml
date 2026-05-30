@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: savings-tracker
+    env: node
+    buildCommand: npm run build:all
+    startCommand: node backend/src/index.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: NODE_ENV
+        value: production
