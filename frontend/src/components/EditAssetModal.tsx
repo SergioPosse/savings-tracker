@@ -94,8 +94,8 @@ export default function EditAssetModal({ asset, onClose, onUpdated }: Props) {
           <div className="flex items-center gap-4">
             <div className="relative shrink-0">
               <div
-                className="w-14 h-14 rounded-full flex items-center justify-center overflow-hidden cursor-pointer ring-2 ring-offset-2 ring-offset-[#161b22] hover:opacity-80 transition-opacity"
-                style={{ backgroundColor: `${platformColor}25`, ringColor: platformColor }}
+                className="w-14 h-14 rounded-full flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ backgroundColor: `${platformColor}25`, outline: `2px solid ${platformColor}`, outlineOffset: '3px' }}
                 onClick={() => fileRef.current?.click()}
               >
                 {icon ? (
