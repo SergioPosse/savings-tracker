@@ -3,8 +3,7 @@ const router = express.Router();
 const axios = require('axios');
 const { pool } = require('../db');
 
-// Map common symbols to CoinGecko IDs
-const SYMBOL_TO_CG = {
+const SYMBOL_TO_COINCAP = {
   BTC:   'bitcoin',
   ETH:   'ethereum',
   USDT:  'tether',
@@ -12,26 +11,26 @@ const SYMBOL_TO_CG = {
   SHIB:  'shiba-inu',
   DOGE:  'dogecoin',
   NEXO:  'nexo',
-  BNB:   'binancecoin',
+  BNB:   'binance-coin',
   SOL:   'solana',
-  MATIC: 'matic-network',
-  POL:   'matic-network',
-  XRP:   'ripple',
+  MATIC: 'polygon',
+  POL:   'polygon',
+  XRP:   'xrp',
   ADA:   'cardano',
-  AVAX:  'avalanche-2',
+  AVAX:  'avalanche',
   LINK:  'chainlink',
   DOT:   'polkadot',
   LTC:   'litecoin',
   BCH:   'bitcoin-cash',
   UNI:   'uniswap',
   ATOM:  'cosmos',
-  DAI:   'dai',
+  DAI:   'multi-collateral-dai',
   TRX:   'tron',
 };
 
 let priceCache = null;
 let lastFetch = 0;
-const CACHE_TTL = 60000; // 1 min
+const CACHE_TTL = 60000;
 
 router.get('/', async (req, res) => {
   try {
@@ -46,37 +45,42 @@ router.get('/', async (req, res) => {
     const prices = { USDT: 1 };
     let arsPerUsdt = 1430;
 
-    // ARS rate from dolarapi.com
+    // ARS/USDT from dolarapi.com
     try {
       const dolarRes = await axios.get('https://dolarapi.com/v1/dolares/cripto', { timeout: 6000 });
       arsPerUsdt = dolarRes.data.venta;
       prices['ARS'] = 1 / arsPerUsdt;
     } catch (e) {
-      console.error('Error fetching ARS rate:', e.message);
+      console.error('dolarapi error:', e.message);
       prices['ARS'] = 1 / arsPerUsdt;
     }
 
-    // Crypto prices from CoinGecko
+    // Crypto prices from CoinCap
     const cryptoSymbols = symbols.filter(s => s !== 'ARS' && s !== 'USDT');
-    const cgIds = [...new Set(cryptoSymbols.map(s => SYMBOL_TO_CG[s]).filter(Boolean))];
+    const coincapIds = [...new Set(cryptoSymbols.map(s => SYMBOL_TO_COINCAP[s]).filter(Boolean))];
 
-    if (cgIds.length > 0) {
+    if (coincapIds.length > 0) {
       try {
-        const cgRes = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
-          params: { ids: cgIds.join(','), vs_currencies: 'usd' },
+        const ccRes = await axios.get('https://api.coincap.io/v2/assets', {
+          params: { ids: coincapIds.join(','), limit: 50 },
           timeout: 10000,
-          headers: { 'Accept': 'application/json' },
+          headers: { 'Accept-Encoding': 'gzip,deflate,compress' },
         });
-        const cgData = cgRes.data;
+
+        const byId = {};
+        for (const asset of ccRes.data.data) {
+          byId[asset.id] = parseFloat(asset.priceUsd);
+        }
 
         for (const sym of cryptoSymbols) {
-          const cgId = SYMBOL_TO_CG[sym];
-          if (cgId && cgData[cgId]?.usd) {
-            prices[sym] = cgData[cgId].usd;
+          const id = SYMBOL_TO_COINCAP[sym];
+          if (id && byId[id]) {
+            prices[sym] = byId[id];
           }
         }
+        console.log('Prices fetched OK:', Object.keys(prices));
       } catch (e) {
-        console.error('CoinGecko error:', e.message);
+        console.error('CoinCap error:', e.message);
       }
     }
 
@@ -84,7 +88,7 @@ router.get('/', async (req, res) => {
     lastFetch = now;
     res.json(priceCache);
   } catch (err) {
-    console.error('Price fetch error:', err);
+    console.error('Price fetch error:', err.message);
     res.status(500).json({ error: 'Error al obtener cotizaciones' });
   }
 });
