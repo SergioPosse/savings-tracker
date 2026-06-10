@@ -90,7 +90,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!loading && totalArs > 0) {
-      document.title = `📈 $${fmt(totalArs, 0)} ARS — Savings Tracker`;
+      document.title = `$${fmt(totalArs, 0)} ARS — Savings Tracker`;
     }
     return () => { document.title = 'Savings Tracker'; };
   }, [totalArs, loading]);
