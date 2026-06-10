@@ -82,6 +82,13 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  useEffect(() => {
+    if (!loading && totalArs > 0) {
+      document.title = `📈 $${fmt(totalArs, 0)} ARS — Savings Tracker`;
+    }
+    return () => { document.title = 'Savings Tracker'; };
+  }, [totalArs, loading]);
+
   const totalUsdt = assets.reduce((s, a) => s + a.valueUsdt, 0);
   const totalArs = assets.reduce((s, a) => s + a.valueArs, 0);
   const totalMonthlyEarnUsdt = assets.reduce((s, a) => s + a.monthlyEarnUsdt, 0);
