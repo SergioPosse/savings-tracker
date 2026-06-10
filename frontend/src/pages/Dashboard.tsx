@@ -76,6 +76,12 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Keep Render alive + auto-refresh prices every 4 minutes while tab is open
+  useEffect(() => {
+    const interval = setInterval(() => fetchData(), 4 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
   const totalUsdt = assets.reduce((s, a) => s + a.valueUsdt, 0);
   const totalArs = assets.reduce((s, a) => s + a.valueArs, 0);
   const totalMonthlyEarnUsdt = assets.reduce((s, a) => s + a.monthlyEarnUsdt, 0);
