@@ -3,41 +3,43 @@ const router = express.Router();
 const axios = require('axios');
 const { pool } = require('../db');
 
-const SYMBOL_TO_COINCAP = {
+const SYMBOL_TO_COINGECKO = {
   BTC: 'bitcoin', ETH: 'ethereum', USDC: 'usd-coin', SHIB: 'shiba-inu',
-  DOGE: 'dogecoin', NEXO: 'nexo', BNB: 'binance-coin', SOL: 'solana',
-  MATIC: 'polygon', POL: 'polygon', XRP: 'xrp', ADA: 'cardano',
-  AVAX: 'avalanche', LINK: 'chainlink', DOT: 'polkadot', LTC: 'litecoin',
+  DOGE: 'dogecoin', NEXO: 'nexo', BNB: 'binancecoin', SOL: 'solana',
+  MATIC: 'matic-network', POL: 'polygon-ecosystem-token', XRP: 'ripple', ADA: 'cardano',
+  AVAX: 'avalanche-2', LINK: 'chainlink', DOT: 'polkadot', LTC: 'litecoin',
   BCH: 'bitcoin-cash', UNI: 'uniswap', ATOM: 'cosmos', TRX: 'tron',
 };
 
-// CryptoCompare — no API key, works from cloud IPs
-async function fetchCryptoCompare(symbols) {
-  const fsyms = symbols.join(',');
-  const res = await axios.get('https://min-api.cryptocompare.com/data/pricemulti', {
-    params: { fsyms, tsyms: 'USD' },
-    timeout: 8000,
-  });
+// Binance public API — no key required, very high rate limits
+async function fetchBinance(symbols) {
+  const res = await axios.get('https://api.binance.com/api/v3/ticker/price', { timeout: 8000 });
+  const priceMap = {};
+  for (const item of res.data) {
+    if (item.symbol.endsWith('USDT')) {
+      priceMap[item.symbol.slice(0, -4)] = parseFloat(item.price);
+    }
+  }
   const result = {};
-  for (const [sym, val] of Object.entries(res.data)) {
-    if (val.USD) result[sym] = val.USD;
+  for (const sym of symbols) {
+    if (priceMap[sym]) result[sym] = priceMap[sym];
   }
   return result;
 }
 
-// CoinCap — fallback
-async function fetchCoinCap(symbols) {
-  const ids = [...new Set(symbols.map(s => SYMBOL_TO_COINCAP[s]).filter(Boolean))];
+// CoinGecko — fallback, free tier 30 req/min, no key needed
+async function fetchCoinGecko(symbols) {
+  const ids = [...new Set(symbols.map(s => SYMBOL_TO_COINGECKO[s]).filter(Boolean))];
   if (!ids.length) return {};
-  const res = await axios.get('https://api.coincap.io/v2/assets', {
-    params: { ids: ids.join(','), limit: 50 },
-    timeout: 8000,
+  const res = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
+    params: { ids: ids.join(','), vs_currencies: 'usd' },
+    timeout: 10000,
   });
-  const result = {};
   const byId = {};
-  for (const a of res.data.data) byId[a.id] = parseFloat(a.priceUsd);
+  for (const [id, val] of Object.entries(res.data)) byId[id] = val.usd;
+  const result = {};
   for (const sym of symbols) {
-    const id = SYMBOL_TO_COINCAP[sym];
+    const id = SYMBOL_TO_COINGECKO[sym];
     if (id && byId[id]) result[sym] = byId[id];
   }
   return result;
@@ -61,30 +63,40 @@ router.get('/', async (req, res) => {
     const prices = { USDT: 1 };
     let arsPerUsdt = 1430;
 
-    // ARS rate
+    // ARS rate — dolarapi.com primary, criptoya.com fallback
     try {
       const r = await axios.get('https://dolarapi.com/v1/dolares/cripto', { timeout: 6000 });
       arsPerUsdt = r.data.venta;
     } catch (e) {
-      console.error('[prices] dolarapi error:', e.message);
+      console.error('[prices] dolarapi error:', e.message, '— trying criptoya...');
+      try {
+        const r2 = await axios.get('https://criptoya.com/api/usdt/ars/0.1', { timeout: 6000 });
+        const asks = Object.values(r2.data)
+          .map(x => x.ask)
+          .filter(v => typeof v === 'number' && v > 0)
+          .sort((a, b) => a - b);
+        if (asks.length) arsPerUsdt = asks[Math.floor(asks.length / 2)]; // median ask
+      } catch (e2) {
+        console.error('[prices] criptoya error:', e2.message);
+      }
     }
     prices['ARS'] = 1 / arsPerUsdt;
 
-    // Crypto prices — try CryptoCompare first, then CoinCap
+    // Crypto prices — Binance primary, CoinGecko fallback
     if (cryptoSymbols.length > 0) {
       let fetched = {};
       let source = '';
 
       try {
-        fetched = await fetchCryptoCompare(cryptoSymbols);
-        source = 'CryptoCompare';
+        fetched = await fetchBinance(cryptoSymbols);
+        source = 'Binance';
       } catch (e) {
-        console.error('[prices] CryptoCompare error:', e.message, '— trying CoinCap...');
+        console.error('[prices] Binance error:', e.message, '— trying CoinGecko...');
         try {
-          fetched = await fetchCoinCap(cryptoSymbols);
-          source = 'CoinCap';
+          fetched = await fetchCoinGecko(cryptoSymbols);
+          source = 'CoinGecko';
         } catch (e2) {
-          console.error('[prices] CoinCap error:', e2.message);
+          console.error('[prices] CoinGecko error:', e2.message);
         }
       }
 
@@ -92,7 +104,6 @@ router.get('/', async (req, res) => {
       const fetchedCount = Object.keys(fetched).length;
       console.log(`[prices] ${source || 'NONE'}: fetched ${fetchedCount}/${cryptoSymbols.length} prices`, Object.keys(fetched));
 
-      // Only cache if we actually got crypto prices
       if (fetchedCount === 0 && cryptoSymbols.length > 0) {
         console.warn('[prices] No crypto prices fetched — NOT caching, will retry next request');
         return res.json({ prices, arsPerUsdt, timestamp: new Date().toISOString() });
