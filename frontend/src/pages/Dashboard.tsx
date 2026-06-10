@@ -82,18 +82,18 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  const totalUsdt = assets.reduce((s, a) => s + a.valueUsdt, 0);
+  const totalArs = assets.reduce((s, a) => s + a.valueArs, 0);
+  const totalMonthlyEarnUsdt = assets.reduce((s, a) => s + a.monthlyEarnUsdt, 0);
+  const totalAnnualEarnUsdt = assets.reduce((s, a) => s + a.annualEarnUsdt, 0);
+  const totalMonthlyEarnArs = assets.reduce((s, a) => s + a.monthlyEarnArs, 0);
+
   useEffect(() => {
     if (!loading && totalArs > 0) {
       document.title = `📈 $${fmt(totalArs, 0)} ARS — Savings Tracker`;
     }
     return () => { document.title = 'Savings Tracker'; };
   }, [totalArs, loading]);
-
-  const totalUsdt = assets.reduce((s, a) => s + a.valueUsdt, 0);
-  const totalArs = assets.reduce((s, a) => s + a.valueArs, 0);
-  const totalMonthlyEarnUsdt = assets.reduce((s, a) => s + a.monthlyEarnUsdt, 0);
-  const totalAnnualEarnUsdt = assets.reduce((s, a) => s + a.annualEarnUsdt, 0);
-  const totalMonthlyEarnArs = assets.reduce((s, a) => s + a.monthlyEarnArs, 0);
 
   return (
     <div className="min-h-screen bg-[#0d1117]">
