@@ -3,44 +3,36 @@ const router = express.Router();
 const axios = require('axios');
 const { pool } = require('../db');
 
-const SYMBOL_TO_COINGECKO = {
-  BTC: 'bitcoin', ETH: 'ethereum', USDC: 'usd-coin', SHIB: 'shiba-inu',
-  DOGE: 'dogecoin', NEXO: 'nexo', BNB: 'binancecoin', SOL: 'solana',
-  MATIC: 'matic-network', POL: 'polygon-ecosystem-token', XRP: 'ripple', ADA: 'cardano',
-  AVAX: 'avalanche-2', LINK: 'chainlink', DOT: 'polkadot', LTC: 'litecoin',
-  BCH: 'bitcoin-cash', UNI: 'uniswap', ATOM: 'cosmos', TRX: 'tron',
-};
+// CoinMarketCap — primary, reliable from cloud IPs
+async function fetchCoinMarketCap(symbols) {
+  const res = await axios.get('https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest', {
+    headers: { 'X-CMC_PRO_API_KEY': process.env.CMC_API_KEY },
+    params: { symbol: symbols.join(','), convert: 'USD' },
+    timeout: 8000,
+  });
+  const result = {};
+  for (const [sym, data] of Object.entries(res.data.data)) {
+    const price = data.quote?.USD?.price;
+    if (price) result[sym] = price;
+  }
+  return result;
+}
 
-// Binance public API — no key required, very high rate limits
-async function fetchBinance(symbols) {
-  const res = await axios.get('https://api.binance.com/api/v3/ticker/price', { timeout: 8000 });
+// CoinPaprika — fallback, free public API, no key, server-friendly
+async function fetchCoinPaprika(symbols) {
+  const res = await axios.get('https://api.coinpaprika.com/v1/tickers', {
+    params: { quotes: 'USD' },
+    timeout: 10000,
+  });
   const priceMap = {};
-  for (const item of res.data) {
-    if (item.symbol.endsWith('USDT')) {
-      priceMap[item.symbol.slice(0, -4)] = parseFloat(item.price);
+  for (const coin of res.data) {
+    if (coin.quotes?.USD?.price && !priceMap[coin.symbol]) {
+      priceMap[coin.symbol] = coin.quotes.USD.price;
     }
   }
   const result = {};
   for (const sym of symbols) {
     if (priceMap[sym]) result[sym] = priceMap[sym];
-  }
-  return result;
-}
-
-// CoinGecko — fallback, free tier 30 req/min, no key needed
-async function fetchCoinGecko(symbols) {
-  const ids = [...new Set(symbols.map(s => SYMBOL_TO_COINGECKO[s]).filter(Boolean))];
-  if (!ids.length) return {};
-  const res = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
-    params: { ids: ids.join(','), vs_currencies: 'usd' },
-    timeout: 10000,
-  });
-  const byId = {};
-  for (const [id, val] of Object.entries(res.data)) byId[id] = val.usd;
-  const result = {};
-  for (const sym of symbols) {
-    const id = SYMBOL_TO_COINGECKO[sym];
-    if (id && byId[id]) result[sym] = byId[id];
   }
   return result;
 }
@@ -75,28 +67,28 @@ router.get('/', async (req, res) => {
           .map(x => x.ask)
           .filter(v => typeof v === 'number' && v > 0)
           .sort((a, b) => a - b);
-        if (asks.length) arsPerUsdt = asks[Math.floor(asks.length / 2)]; // median ask
+        if (asks.length) arsPerUsdt = asks[Math.floor(asks.length / 2)];
       } catch (e2) {
         console.error('[prices] criptoya error:', e2.message);
       }
     }
     prices['ARS'] = 1 / arsPerUsdt;
 
-    // Crypto prices — Binance primary, CoinGecko fallback
+    // Crypto prices — CoinMarketCap primary, CoinPaprika fallback
     if (cryptoSymbols.length > 0) {
       let fetched = {};
       let source = '';
 
       try {
-        fetched = await fetchBinance(cryptoSymbols);
-        source = 'Binance';
+        fetched = await fetchCoinMarketCap(cryptoSymbols);
+        source = 'CoinMarketCap';
       } catch (e) {
-        console.error('[prices] Binance error:', e.message, '— trying CoinGecko...');
+        console.error('[prices] CoinMarketCap error:', e.message, '— trying CoinPaprika...');
         try {
-          fetched = await fetchCoinGecko(cryptoSymbols);
-          source = 'CoinGecko';
+          fetched = await fetchCoinPaprika(cryptoSymbols);
+          source = 'CoinPaprika';
         } catch (e2) {
-          console.error('[prices] CoinGecko error:', e2.message);
+          console.error('[prices] CoinPaprika error:', e2.message);
         }
       }
 
